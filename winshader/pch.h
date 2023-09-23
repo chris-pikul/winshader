@@ -17,6 +17,11 @@
 #include <winrt/Windows.Graphics.DirectX.h>
 #include <winrt/Windows.Graphics.DirectX.Direct3d11.h>
 
+using namespace winrt::Windows;
+
+// Dispatcher
+#include <DispatcherQueue.h>
+
 // DirectX
 #include <d3d11_4.h>
 #include <dxgi1_6.h>
@@ -26,3 +31,7 @@
 // Miscellaneous
 #include <Unknwn.h>
 #include <inspectable.h>
+
+#include "direct3d11.interop.h"
+#include "capture.interop.h"
+#include "composition.interop.h"

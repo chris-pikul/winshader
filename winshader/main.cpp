@@ -13,10 +13,15 @@
  */
 #include "pch.h"
 
+#include "App.h"
+
 using namespace winrt;
-using namespace Windows::UI;
-using namespace Windows::UI::Composition;
-using namespace Windows::UI::Composition::Desktop;
+using namespace UI;
+using namespace UI::Composition;
+using namespace UI::Composition::Desktop;
+
+// Establish global instance of App for the life of the program
+std::shared_ptr<App> g_App = std::make_shared<App>();
 
 // Forward declare the windows main function
 int CALLBACK WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int);
@@ -24,10 +29,34 @@ int CALLBACK WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int);
 // Forward declare the windows procedure handler function
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 
+// DX3D11 Requires a dispatcher queue
+System::DispatcherQueueController CreateDispatcherQueueController() {
+    namespace abi = ABI::Windows::System;
+
+    DispatcherQueueOptions options {
+        sizeof(DispatcherQueueOptions),
+        DQTYPE_THREAD_CURRENT,
+        DQTAT_COM_STA
+    };
+
+    System::DispatcherQueueController controller{ nullptr };
+    check_hresult(CreateDispatcherQueueController(options, reinterpret_cast<abi::IDispatcherQueueController**>(put_abi(controller))));
+    return controller;
+}
+
+DesktopWindowTarget CreateDesktopWindowTarget(Compositor const& compositor, HWND hWnd) {
+    namespace abi = ABI::Windows::UI::Composition::Desktop;
+
+    auto interop = compositor.as<abi::ICompositorDesktopInterop>();
+    DesktopWindowTarget target{ nullptr };
+    check_hresult(interop->CreateDesktopWindowTarget(hWnd, true, reinterpret_cast<abi::IDesktopWindowTarget**>(put_abi(target))));
+    return target;
+}
+
 // Implementation of windows main function. Program entry.
 int CALLBACK WinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prevInstance, _In_ LPSTR cmdLine, _In_ int cmdShow) {
     // Initialize WinRT threading model for COM
-    init_apartment(apartment_type::single_threaded);
+    winrt::init_apartment(winrt::apartment_type::single_threaded);
 
     // Setup window class for program display
     WNDCLASSEX wndClass = {};
@@ -63,6 +92,23 @@ int CALLBACK WinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prevInstance, _
 
     ShowWindow(hWnd, cmdShow);
     UpdateWindow(hWnd);
+
+    // Create dispatcher queue for DX3D using THIS thread
+    auto controller = CreateDispatcherQueueController();
+
+    // Initialize the compositor for capturing
+    auto compositor = Compositor();
+    auto target = CreateDesktopWindowTarget(compositor, hWnd);
+    auto root = compositor.CreateContainerVisual();
+    root.RelativeSizeAdjustment({ 1.0f, 1.0f });
+    target.Root(root);
+
+    // Add the capture worker to the queue
+    auto queue = controller.DispatcherQueue();
+    auto success = queue.TryEnqueue([=]() -> void {
+            g_App->Initialize(root);
+    });
+    WINRT_VERIFY(success);
 
     // Event/Message Loop
     MSG msg;
